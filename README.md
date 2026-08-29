@@ -1,87 +1,72 @@
 # Gyropode ESP32
 
-Firmware d'un gyropode (robot à deux roues auto-équilibré) basé sur un ESP32 et
-une centrale inertielle MPU6050, pilotable par Bluetooth ou depuis un
-navigateur via le Wi-Fi de l'ESP32.
+Firmware d'un gyropode (robot deux roues auto-équilibré) sur ESP32 avec MPU6050,
+piloté depuis un téléphone ou un PC via le point d'accès Wi-Fi de la carte
+(WebSocket), et interface de pilotage/réglage `web/pilotage.html`.
+
+Le code de `src/main.cpp` est celui mis au point et validé sur le robot réel :
+tous les réglages (gains, calibrage, seuils) et l'historique des corrections
+sont documentés en commentaires dans le fichier.
 
 ## Fonctionnement
 
-L'ESP32 lit 200 fois par seconde l'accéléromètre et le gyroscope du MPU6050. Un
-filtre complémentaire combine les deux mesures pour estimer l'angle
-d'inclinaison, et un régulateur PID transforme cet angle en vitesse des roues :
-quand le gyropode penche en avant, les roues avancent pour se replacer sous lui.
-
-Piloter revient simplement à demander une inclinaison : le PID fait le reste.
-
-## Matériel
-
-ESP32 DevKit v1, MPU6050, driver TB6612FNG (ou L298N), deux motoréducteurs et
-une batterie. Le détail du câblage est dans [docs/cablage.md](docs/cablage.md).
+- Filtre complémentaire sur le MPU6050 → angle `thetaF`.
+- Régulateur PD (`Kp`, `Kd`) angle → PWM moteurs, dans une tâche FreeRTOS
+  dédiée (période `Te` = 5 ms, coeur 1), pendant que `loop()` (100 ms) gère le
+  réseau, la batterie et le diagnostic.
+- Boucle de vitesse cascadée (`Kpv`, `Kdv`) et biais direct `KVcons` pour
+  avancer/reculer, avec rampe sur la consigne (`VconsRampeMax`).
+- Sécurités : coupure au-delà de `seuilChute` (±50°), zone morte `seuilRepos`
+  contre les vibrations, coupure sur batterie faible, garde-fou anti-NaN.
+- LED d'état batterie (vert / bleu / rouge) et coupure moteur sous ~6,0 V.
 
 ## Compilation et téléversement
 
-### PlatformIO (recommandé)
-
 ```bash
-pip install platformio
-pio run --target upload
-pio device monitor
+pio run                 # compiler
+pio run --target upload # téléverser
+pio device monitor      # console série, 115200 bauds
 ```
 
-### Arduino IDE
+`platformio.ini` utilise le fork **pioarduino** de la plateforme ESP32 : le
+firmware s'appuie sur le coeur Arduino ESP32 3.x (API
+`ledcAttach(broche, fréquence, résolution)`), absent de la plateforme
+`espressif32` officielle de PlatformIO. Bibliothèques installées
+automatiquement : *Adafruit MPU6050* et *WebSockets* (Links2004).
 
-Installer le support ESP32 (Boards Manager → *esp32* d'Espressif), puis copier
-le contenu de `src/` et `include/` dans un dossier de croquis, en renommant
-`main.cpp` en `gyropode.ino`. Carte : *ESP32 Dev Module*.
-
-## Première mise en route
-
-1. Poser le gyropode **à plat et immobile**, puis alimenter : le gyroscope se
-   calibre pendant les deux premières secondes.
-2. Le tenir à la main, roues en l'air, et vérifier sur le moniteur série que
-   l'angle affiché est proche de 0° à la verticale.
-3. Vérifier que les roues tournent dans le sens du redressement quand on penche
-   le gyropode. Si elles tournent à l'envers, inverser les fils d'un moteur.
-4. Régler les gains PID en suivant [docs/reglage-pid.md](docs/reglage-pid.md).
+Sous Arduino IDE, installer ces deux bibliothèques et le paquet ESP32 3.x, puis
+copier `src/main.cpp` dans un croquis.
 
 ## Pilotage
 
-### Wi-Fi
+1. Connecter le téléphone ou le PC au réseau Wi-Fi **Gyropode** (mot de passe
+   `gyropode1`).
+2. Ouvrir `web/pilotage.html` localement dans le navigateur (`file://`), saisir
+   l'IP `192.168.4.1` et cliquer **Connecter**.
 
-L'ESP32 crée un point d'accès `Gyropode` (mot de passe `gyropode123`, à changer
-dans `include/config.h`). S'y connecter et ouvrir <http://192.168.4.1> : la page
-offre les commandes de direction, les curseurs de réglage PID et l'angle en
-temps réel.
+La page donne les commandes de déplacement, les curseurs de réglage en direct
+(gains, calibrage, seuils) et les courbes de diagnostic. Les mêmes commandes
+sont acceptées sur le port série USB, une par ligne — la liste complète est en
+tête de `src/main.cpp`.
 
-### Bluetooth
+Ouvrir la page en `https://` empêche la connexion `ws://` vers le réseau local :
+l'ouvrir en fichier local ou en `http://`.
 
-Appairer l'appareil `Gyropode` et utiliser n'importe quel terminal série
-Bluetooth :
+## Avant tout essai au sol
 
-| Touche | Action |
+Vérifier le sens des moteurs avec `TestOn`, `TestG 300`, `TestD 300`, puis
+`TestOff`. Une inversion gauche/droite ou de polarité transforme
+l'asservissement en réaction positive : le robot accélérerait sa chute.
+
+Le brochage est détaillé dans [docs/cablage.md](docs/cablage.md) et la méthode
+de réglage dans [docs/reglage-pid.md](docs/reglage-pid.md).
+
+## Organisation du dépôt
+
+| Chemin | Rôle |
 | --- | --- |
-| `z` | avancer |
-| `s` | reculer |
-| `q` / `d` | tourner à gauche / à droite |
-| espace | arrêt |
-| `x` / `e` | couper / réactiver les moteurs |
-
-Sans commande reçue pendant 600 ms, le gyropode revient à l'arrêt de lui-même.
-
-## Sécurité
-
-Au-delà de 45° d'inclinaison, les moteurs sont coupés et ne repartent qu'une
-fois le gyropode redressé à la main. Faire les premiers essais roues en l'air ou
-au-dessus d'une surface dégagée, et garder un moyen de couper l'alimentation
-moteurs à portée de main.
-
-## Organisation du code
-
-| Fichier | Rôle |
-| --- | --- |
-| `src/main.cpp` | boucle d'asservissement et gestion des chutes |
-| `src/imu.cpp` | lecture du MPU6050 et filtre complémentaire |
-| `src/pid.cpp` | régulateur PID avec anti-emballement |
-| `src/motors.cpp` | pilotage PWM des moteurs |
-| `src/remote.cpp` | Bluetooth, point d'accès Wi-Fi et interface web |
-| `include/config.h` | brochage et paramètres de réglage |
+| `src/main.cpp` | firmware complet (équilibrage, Wi-Fi/WebSocket, batterie) |
+| `web/pilotage.html` | interface de pilotage et de réglage, à ouvrir en local |
+| `platformio.ini` | plateforme, bibliothèques et partitions |
+| `.vscode/gyropode.code-workspace` | espace de travail VS Code |
+| `docs/` | câblage et réglage |

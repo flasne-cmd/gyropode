@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pilotage — programme final (WiFi/WebSocket)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #14120f;
+    --panel: #1d1a15;
+    --panel-border: #33301f;
+    --ink: #e8dfc8;
+    --ink-dim: #8a8471;
+    --amber: #e8a33d;
+    --amber-dim: #6b4f1f;
+    --red: #c94f3d;
+    --green: #6fae5c;
+    --blue: #4f8fc9;
+    --mono: "IBM Plex Mono", "SF Mono", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 2px 0;
+  }
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 11px;
+    margin: 0 0 16px 0;
+    letter-spacing: 0.03em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 14px;
+    max-width: 1200px;
+  }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 14px 16px;
+  }
+  .panel + .panel { margin-top: 14px; }
+  .panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+    margin: 0 0 12px 0;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink-dim);
+    flex-shrink: 0;
+  }
+  .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.err { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  button {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    padding: 7px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    user-select: none;
+  }
+  button:hover:not(:disabled) { border-color: var(--amber); background: #241f14; }
+  button:active:not(:disabled) { background: #2c2517; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.stop {
+    border-color: var(--red);
+    color: var(--red);
+    font-weight: 700;
+    width: 100%;
+    padding: 14px;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+  }
+  button.stop:hover:not(:disabled) { background: #2a1712; }
+  button.toggle.active {
+    background: var(--amber-dim);
+    color: #14120f;
+    border-color: var(--amber);
+  }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .field .row { display: flex; gap: 6px; }
+  input[type="number"], input[type="text"] {
+    font-family: var(--mono);
+    background: #0f0d0a;
+    border: 1px solid var(--panel-border);
+    color: var(--ink);
+    padding: 7px 8px;
+    border-radius: 2px;
+    width: 100%;
+    font-size: 13px;
+  }
+  input:focus { outline: none; border-color: var(--amber-dim); }
+
+  /* -------- Curseur avance/recule -------- */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--panel-border);
+    border-radius: 2px;
+    outline: none;
+    touch-action: none; /* sinon le scroll tactile de la page annule le drag (pointercancel) sur mobile */
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+  }
+  input[type="range"]:disabled::-webkit-slider-thumb { background: var(--amber-dim); cursor: not-allowed; }
+  input[type="range"]:disabled::-moz-range-thumb { background: var(--amber-dim); cursor: not-allowed; }
+  .slider-value {
+    font-size: 15px;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+    min-width: 3.5em;
+    text-align: right;
+  }
+
+  /* -------- D-pad (gauche/droite uniquement) -------- */
+  .dpad-lr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .dpad-lr button {
+    padding: 16px 0;
+    font-size: 16px;
+    text-align: center;
+  }
+
+  .readout-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 500px) {
+    .readout-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .readout {
+    background: #0f0d0a;
+    border: 1px solid var(--panel-border);
+    border-radius: 2px;
+    padding: 8px 10px;
+  }
+  .readout .label { font-size: 9px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .readout .value { font-size: 17px; color: var(--amber); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .readout .value.led-V { color: var(--green); }
+  .readout .value.led-B { color: var(--blue); }
+  .readout .value.led-R { color: var(--red); }
+  #chart-wrap { height: 200px; }
+  #log {
+    height: 140px;
+    overflow-y: auto;
+    background: #0f0d0a;
+    border: 1px solid var(--panel-border);
+    border-radius: 2px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ink-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #log .line-fresh { color: var(--ink); }
+  .warning {
+    background: #241a12;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    padding: 10px 12px;
+    border-radius: 2px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .warning.hidden { display: none; }
+  .raw-row { display: flex; gap: 6px; margin-top: 10px; }
+  .raw-row input { flex: 1; }
+  .hint {
+    font-size: 10.5px;
+    color: var(--ink-dim);
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Pilotage — programme final</h1>
+<p class="subtitle">Point d'accès WiFi de l'ESP32 — WebSocket port 81 — SSID par défaut : Gyropode</p>
+
+<div id="warning" class="warning hidden"></div>
+
+<div class="grid">
+
+  <div class="col-left">
+    <div class="panel">
+      <div class="panel-title">Connexion</div>
+      <div class="status-row">
+        <div id="statusDot" class="dot"></div>
+        <span id="statusText">Déconnecté</span>
+      </div>
+      <div class="field">
+        <label>Adresse IP du robot</label>
+        <input type="text" id="ipInput" value="192.168.4.1">
+      </div>
+      <div class="field">
+        <div class="row">
+          <button id="btnConnect">Connecter</button>
+          <button id="btnDisconnect" disabled>Déconnecter</button>
+        </div>
+      </div>
+      <p class="hint">Connecte d'abord ton téléphone/PC au réseau WiFi "Gyropode" (mot de passe : gyropode1), puis clique Connecter. L'IP par défaut du point d'accès ESP32 est 192.168.4.1.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Pilotage</div>
+      <div class="field">
+        <label>Avance / recule</label>
+        <div class="slider-row">
+          <input type="range" id="vconsSlider" min="-80" max="80" step="1" value="0" disabled>
+          <span id="vconsValue" class="slider-value">0</span>
+        </div>
+      </div>
+      <div class="dpad-lr">
+        <button class="l" data-cmd="L">◀ Gauche</button>
+        <button class="r" data-cmd="R">Droite ▶</button>
+      </div>
+      <button id="btnStop" class="stop">■ ARRÊT (S)</button>
+      <p class="hint">Curseur "homme mort" : la valeur (commande Vcons) suit le doigt/la souris en direct et revient automatiquement à 0 (arrêt) au relâché -- bornes réglées sur ConsAvance ci-dessous. Gauche/Droite : appui maintenu, l'arrêt part au relâché. Le robot reste équilibré tout seul entre-temps, ces commandes ne pilotent que l'avance/le virage.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Amplitude pilotage</div>
+      <div class="field">
+        <label>ConsAvance (avance/recule)</label>
+        <div class="row">
+          <input type="number" id="consAvanceInput" value="80" step="5">
+          <button id="btnConsAvance">Envoyer</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>ConsVirage (virage)</label>
+        <div class="row">
+          <input type="number" id="consVirageInput" value="60" step="5">
+          <button id="btnConsVirage">Envoyer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-right">
+    <div class="panel">
+      <div class="panel-title">Diagnostic en direct</div>
+      <div class="readout-grid">
+        <div class="readout"><div class="label">thetaF (angle)</div><div class="value" id="roTheta">—</div></div>
+        <div class="readout"><div class="label">ec (commande)</div><div class="value" id="roEc">—</div></div>
+        <div class="readout"><div class="label">Eccg / Eccd</div><div class="value" id="roEcc">—</div></div>
+        <div class="readout"><div class="label">thetaC (consigne vitesse)</div><div class="value" id="roThetaC">—</div></div>
+        <div class="readout"><div class="label">efv (proxy vitesse)</div><div class="value" id="roEfv">—</div></div>
+        <div class="readout"><div class="label">Vcons / Rampe / Dec</div><div class="value" id="roCons">—</div></div>
+        <div class="readout"><div class="label">vitesse G / D</div><div class="value" id="roVit">—</div></div>
+        <div class="readout"><div class="label">Batterie (ADC)</div><div class="value" id="roBat">—</div></div>
+        <div class="readout"><div class="label">État LED</div><div class="value" id="roLed">—</div></div>
+        <div class="readout"><div class="label">Coupure</div><div class="value" id="roCoupure">—</div></div>
+        <div class="readout"><div class="label">Chute (sécurité)</div><div class="value" id="roChute">—</div></div>
+      </div>
+      <div id="chart-wrap"><canvas id="chart"></canvas></div>
+      <p class="hint">thetaC/efv = boucle de vitesse cascadée (visibles depuis le firmware du 2026-08-27). thetaC = consigne d'inclinaison générée par Kpv/Kdv/KVcons ; efv = proxy filtré de "vitesse" dérivé de ec, PAS une mesure encodeur réelle.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Équilibrage (PD)</div>
+      <div class="two-col">
+        <div class="field">
+          <label>Kp</label>
+          <div class="row">
+            <input type="number" id="kpInput" value="-13" step="0.1">
+            <button id="btnKp">OK</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Kd</label>
+          <div class="row">
+            <input type="number" id="kdInput" value="-30" step="1">
+            <button id="btnKd">OK</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>thetaeq (angle d'équilibre)</label>
+          <div class="row">
+            <input type="number" id="thetaeqInput" value="-9.962" step="0.01">
+            <button id="btnThetaeq">OK</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Tau1 / Tau2 (filtres)</label>
+          <div class="row">
+            <input type="number" id="tau1Input" value="100" step="1">
+            <input type="number" id="tau2Input" value="35" step="1">
+            <button id="btnTau">OK</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Kpv (boucle vitesse casc.)</label>
+          <div class="row">
+            <input type="number" id="kpvInput" value="-0.015" step="0.005">
+            <button id="btnKpv">OK</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Kdv (boucle vitesse casc.)</label>
+          <div class="row">
+            <input type="number" id="kdvInput" value="0.3" step="0.05">
+            <button id="btnKdv">OK</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Kp/Kd doivent changer de signe ensemble si tu les retouches (voir claude/gyropode-notes.md). Kpv/Kdv : réactivation en cours de validation (2026-08-27) -- signe à redéterminer empiriquement à très petite magnitude (ex 0.01), robot tenu à la main ou sur support, jamais au sol pour ce test. Observe thetaC/efv ci-dessus pendant le réglage.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Sécurité chute</div>
+      <div class="field">
+        <label>Seuil de coupure (+/- degrés)</label>
+        <div class="row">
+          <input type="number" id="seuilChuteInput" value="50" step="5">
+          <button id="btnSeuilChute">OK</button>
+        </div>
+      </div>
+      <p class="hint">Au-delà de ce seuil sur thetaF, le moteur est coupé automatiquement (chute réelle, plus une question de réglage PD) et repart tout seul dès que le robot repasse sous le seuil. Voir la tuile "Chute (sécurité)" ci-dessus.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Anti-vibration (repos)</div>
+      <div class="field">
+        <label>Seuil de repos (zone morte sur Ecg/Ecd)</label>
+        <div class="row">
+          <input type="number" id="seuilReposInput" value="15" step="5">
+          <button id="btnSeuilRepos">OK</button>
+        </div>
+      </div>
+      <p class="hint">Coupe la compensation de frottement sec (qui saute entre +/-190) tant que la commande gauche/droite reste sous ce seuil -- évite les vibrations dues au bruit capteur quand le robot est déjà équilibré. Augmenter si les vibrations persistent à l'arrêt ; réduire si le robot devient mou près de l'équilibre.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Rampe vitesse (anti-chute)</div>
+      <div class="field">
+        <label>VconsRampeMax (pente max par cycle, 5 ms)</label>
+        <div class="row">
+          <input type="number" id="vconsRampeMaxInput" value="2" step="0.5">
+          <button id="btnVconsRampeMax">OK</button>
+        </div>
+      </div>
+      <p class="hint">Lisse tout changement de vitesse (curseur déplacé vite) au lieu de l'appliquer d'un coup -- évite que le robot doive se pencher brutalement et tombe. Réduire si ça tombe encore aux vitesses élevées ; augmenter si l'accélération est trop molle. Observe "Vcons / Rampe / Dec" ci-dessus : la rampe doit suivre Vcons sans à-coup.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        Test moteur (bypass équilibrage)
+        <button id="btnTestMode" class="toggle" style="padding:4px 10px;font-size:10px;">TestOn</button>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>TestG (roue gauche)</label>
+          <div class="row">
+            <input type="number" id="testGInput" value="0" step="10">
+            <button id="btnTestG" disabled>Envoyer</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>TestD (roue droite)</label>
+          <div class="row">
+            <input type="number" id="testDInput" value="0" step="10">
+            <button id="btnTestD" disabled>Envoyer</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Active TestOn AVANT de tester (coupe l'équilibrage). Sert à vérifier le câblage moteur (TestG 300 doit faire tourner la roue gauche) — robot posé sur un support, pas au sol. Repasse en TestOff avant tout test d'équilibrage.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        Test batterie (simulation)
+        <button id="btnTestBatMode" class="toggle" style="padding:4px 10px;font-size:10px;">TestBatOn</button>
+      </div>
+      <div class="field">
+        <label>Valeur ADC simulée</label>
+        <div class="row">
+          <input type="number" id="testBatInput" value="4095" step="50">
+          <button id="btnTestBat" disabled>Envoyer</button>
+        </div>
+      </div>
+      <p class="hint">Seuils réels : &lt;3500 = LED bleue (faible), &lt;3000 = LED rouge + coupure moteur.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Journal WebSocket</div>
+      <div id="log"></div>
+      <div class="raw-row">
+        <input type="text" id="rawInput" placeholder="commande brute (ex: Kp -14)" disabled>
+        <button id="btnRaw" disabled>Envoyer</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const els = {};
+document.querySelectorAll('[id]').forEach(el => { els[el.id] = el; });
+
+let ws = null;
+let connected = false;
+let testModeActive = false;
+let testBatModeActive = false;
+
+const controls = [
+  els.btnStop, els.vconsSlider, els.btnConsAvance, els.btnConsVirage,
+  els.btnKp, els.btnKd, els.btnThetaeq, els.btnTau, els.btnKpv, els.btnKdv,
+  els.btnSeuilChute, els.btnSeuilRepos, els.btnVconsRampeMax,
+  els.btnTestMode, els.btnTestBatMode, els.rawInput, els.btnRaw
+];
+const dpadButtons = document.querySelectorAll('.dpad-lr button');
+
+function resetVconsSlider() {
+  els.vconsSlider.value = 0;
+  els.vconsValue.textContent = '0';
+}
+
+function setConnectedUI(isConnected) {
+  connected = isConnected;
+  els.btnConnect.disabled = isConnected;
+  els.btnDisconnect.disabled = !isConnected;
+  els.ipInput.disabled = isConnected;
+  controls.forEach(el => el.disabled = !isConnected);
+  dpadButtons.forEach(el => el.disabled = !isConnected);
+  els.btnTestG.disabled = !(isConnected && testModeActive);
+  els.btnTestD.disabled = !(isConnected && testModeActive);
+  els.btnTestBat.disabled = !(isConnected && testBatModeActive);
+  els.statusDot.className = 'dot' + (isConnected ? ' on' : '');
+  els.statusText.textContent = isConnected ? 'Connecté' : 'Déconnecté';
+  if (!isConnected) resetVconsSlider();
+}
+
+function logLine(text, fresh) {
+  const div = document.createElement('div');
+  if (fresh) div.className = 'line-fresh';
+  div.textContent = text;
+  els.log.appendChild(div);
+  els.log.scrollTop = els.log.scrollHeight;
+  while (els.log.childNodes.length > 300) els.log.removeChild(els.log.firstChild);
+}
+
+function showWarning(text) {
+  els.warning.textContent = text;
+  els.warning.classList.remove('hidden');
+}
+function hideWarning() {
+  els.warning.classList.add('hidden');
+}
+
+// ---------- WebSocket ----------
+function connect() {
+  const ip = els.ipInput.value.trim() || '192.168.4.1';
+  const url = 'ws://' + ip + ':81/';
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    showWarning('Impossible de créer la connexion WebSocket : ' + e.message);
+    return;
+  }
+
+  ws.onopen = () => {
+    hideWarning();
+    setConnectedUI(true);
+    logLine('-- connecté à ' + url + ' --', true);
+  };
+  ws.onclose = () => {
+    setConnectedUI(false);
+    logLine('-- déconnecté --', true);
+  };
+  ws.onerror = () => {
+    showWarning("Connexion impossible. Vérifie que le téléphone/PC est bien sur le réseau WiFi \"Gyropode\" et que l'IP est correcte (192.168.4.1 par défaut). Si cette page est ouverte en https://, certains navigateurs bloquent les connexions ws:// non chiffrées vers un réseau local -- ouvre-la plutôt en tant que fichier local (file://) ou en http://.");
+  };
+  ws.onmessage = (evt) => {
+    handleLine(evt.data);
+  };
+}
+
+function disconnect() {
+  if (ws) ws.close();
+}
+
+function sendCommand(cmd) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(cmd);
+  logLine('> ' + cmd, true);
+}
+
+// ---------- Parsing des lignes de diagnostic ----------
+// Format (voir programme_final.cpp, MAJ 2026-08-29 -- ajout VconsRampe) :
+// thetaF=%.3f ec=%.1f Eccg=%.1f Eccd=%.1f | thetaC=%.2f efv=%.1f | Vcons=%.0f VconsRampe=%.1f Dec=%.0f | vG=%.1f vD=%.1f | bat=%.0f led=%c coupure=%d chute=%d
+const re = /thetaF=(-?[\d.]+)\s+ec=(-?[\d.]+)\s+Eccg=(-?[\d.]+)\s+Eccd=(-?[\d.]+)\s*\|\s*thetaC=(-?[\d.]+)\s+efv=(-?[\d.]+)\s*\|\s*Vcons=(-?[\d.]+)\s+VconsRampe=(-?[\d.]+)\s+Dec=(-?[\d.]+)\s*\|\s*vG=(-?[\d.]+)\s+vD=(-?[\d.]+)\s*\|\s*bat=(-?[\d.]+)\s+led=(\w)\s+coupure=(\d)\s+chute=(\d)/;
+
+const maxPoints = 150;
+const history = { t: [], theta: [], ec: [], thetaC: [], efv: [], vconsRampe: [] };
+let sampleIndex = 0;
+
+function handleLine(line) {
+  if (!line || line.length === 0) return;
+  logLine(line);
+  const m = re.exec(line);
+  if (!m) return;
+
+  const [, thetaF, ec, eccg, eccd, thetaC, efv, vcons, vconsRampe, dec, vg, vd, bat, led, coupure, chuteFlag] = m;
+  els.roTheta.textContent = parseFloat(thetaF).toFixed(2) + '°';
+  els.roEc.textContent = parseFloat(ec).toFixed(0);
+  els.roEcc.textContent = parseFloat(eccg).toFixed(0) + ' / ' + parseFloat(eccd).toFixed(0);
+  els.roThetaC.textContent = parseFloat(thetaC).toFixed(2) + '°';
+  els.roEfv.textContent = parseFloat(efv).toFixed(1);
+  els.roCons.textContent = parseFloat(vcons).toFixed(0) + ' / ' + parseFloat(vconsRampe).toFixed(1) + ' / ' + parseFloat(dec).toFixed(0);
+  els.roVit.textContent = parseFloat(vg).toFixed(0) + ' / ' + parseFloat(vd).toFixed(0);
+  els.roBat.textContent = bat;
+  els.roLed.textContent = led === 'V' ? 'Vert' : led === 'B' ? 'Bleu' : 'Rouge';
+  els.roLed.className = 'value led-' + led;
+  els.roCoupure.textContent = coupure === '1' ? 'OUI' : 'non';
+  els.roCoupure.style.color = coupure === '1' ? 'var(--red)' : 'var(--green)';
+  els.roChute.textContent = chuteFlag === '1' ? 'OUI' : 'non';
+  els.roChute.style.color = chuteFlag === '1' ? 'var(--red)' : 'var(--green)';
+
+  sampleIndex++;
+  history.t.push(sampleIndex);
+  history.theta.push(parseFloat(thetaF));
+  history.ec.push(parseFloat(ec));
+  history.thetaC.push(parseFloat(thetaC));
+  history.efv.push(parseFloat(efv));
+  history.vconsRampe.push(parseFloat(vconsRampe));
+  if (history.t.length > maxPoints) {
+    history.t.shift(); history.theta.shift(); history.ec.shift(); history.thetaC.shift(); history.efv.shift(); history.vconsRampe.shift();
+  }
+  updateChart();
+}
+
+// ---------- Graphique ----------
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'thetaF (angle, deg)', data: [], borderColor: '#e8a33d', pointRadius: 0, borderWidth: 2 },
+      { label: 'thetaC (consigne vitesse, deg)', data: [], borderColor: '#4f8fc9', pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3] },
+      { label: 'ec (commande)', data: [], borderColor: '#6fae5c', pointRadius: 0, borderWidth: 1, yAxisID: 'y1' },
+      { label: 'efv (proxy vitesse)', data: [], borderColor: '#c94f3d', pointRadius: 0, borderWidth: 1, borderDash: [2, 2], yAxisID: 'y1' },
+      { label: 'VconsRampe (vitesse rampée)', data: [], borderColor: '#a37fd6', pointRadius: 0, borderWidth: 1.5, yAxisID: 'y1' },
+    ]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'nearest', intersect: false },
+    scales: {
+      x: { display: false },
+      y: { ticks: { color: '#8a8471', font: { family: 'monospace', size: 10 } }, grid: { color: '#2a2618' } },
+      y1: { position: 'right', min: -600, max: 600, ticks: { color: '#6fae5c', font: { family: 'monospace', size: 10 } }, grid: { display: false } },
+    },
+    plugins: {
+      legend: { labels: { color: '#e8dfc8', font: { family: 'monospace', size: 10 }, boxWidth: 12 } },
+    },
+  }
+});
+
+function updateChart() {
+  chart.data.labels = history.t;
+  chart.data.datasets[0].data = history.theta;
+  chart.data.datasets[1].data = history.thetaC;
+  chart.data.datasets[2].data = history.ec;
+  chart.data.datasets[3].data = history.efv;
+  chart.data.datasets[4].data = history.vconsRampe;
+  chart.update('none');
+}
+
+// ---------- Événements UI ----------
+els.btnConnect.addEventListener('click', connect);
+els.btnDisconnect.addEventListener('click', disconnect);
+
+// D-pad (gauche/droite) : "homme mort" -- la commande part au toucher, le
+// relâché envoie "Dec 0" (annule uniquement le virage). PAS "S" : depuis que
+// l'avance/recule est piloté par le curseur en continu, "S" couperait aussi
+// Vcons -- relâcher le virage ne doit pas arrêter une vitesse en cours.
+dpadButtons.forEach(btn => {
+  const cmd = btn.dataset.cmd;
+  const press = (e) => { e.preventDefault(); sendCommand(cmd); };
+  const release = (e) => { e.preventDefault(); sendCommand('Dec 0'); };
+  btn.addEventListener('pointerdown', press);
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointerleave', release);
+  btn.addEventListener('pointercancel', release);
+});
+
+els.btnStop.addEventListener('click', () => { sendCommand('S'); resetVconsSlider(); });
+
+// Curseur avance/recule -- "homme mort" comme le D-pad : la valeur suit le
+// curseur en direct (commande Vcons continue) et revient à 0 (arrêt) au
+// relâché. pointerup couvre souris/tactile/stylet ; pointercancel couvre le
+// cas où le geste est interrompu (ex. appel entrant sur téléphone).
+let vconsSendPending = false;
+els.vconsSlider.addEventListener('input', () => {
+  els.vconsValue.textContent = els.vconsSlider.value;
+  if (vconsSendPending) return;
+  vconsSendPending = true;
+  requestAnimationFrame(() => {
+    sendCommand('Vcons ' + els.vconsSlider.value);
+    vconsSendPending = false;
+  });
+});
+els.vconsSlider.addEventListener('pointerup', () => { resetVconsSlider(); sendCommand('Vcons 0'); });
+els.vconsSlider.addEventListener('pointercancel', () => { resetVconsSlider(); sendCommand('Vcons 0'); });
+
+// Bornes du curseur alignées sur ConsAvance (même amplitude que F/B avant).
+function syncVconsSliderRange() {
+  const v = Math.abs(parseFloat(els.consAvanceInput.value)) || 80;
+  els.vconsSlider.min = -v;
+  els.vconsSlider.max = v;
+}
+els.consAvanceInput.addEventListener('input', syncVconsSliderRange);
+syncVconsSliderRange();
+
+els.btnConsAvance.addEventListener('click', () => sendCommand('ConsAvance ' + els.consAvanceInput.value));
+els.btnConsVirage.addEventListener('click', () => sendCommand('ConsVirage ' + els.consVirageInput.value));
+
+els.btnKp.addEventListener('click', () => sendCommand('Kp ' + els.kpInput.value));
+els.btnKd.addEventListener('click', () => sendCommand('Kd ' + els.kdInput.value));
+els.btnThetaeq.addEventListener('click', () => sendCommand('thetaeq ' + els.thetaeqInput.value));
+els.btnSeuilChute.addEventListener('click', () => sendCommand('SeuilChute ' + els.seuilChuteInput.value));
+els.btnSeuilRepos.addEventListener('click', () => sendCommand('SeuilRepos ' + els.seuilReposInput.value));
+els.btnVconsRampeMax.addEventListener('click', () => sendCommand('VconsRampeMax ' + els.vconsRampeMaxInput.value));
+els.btnTau.addEventListener('click', () => {
+  sendCommand('Tau1 ' + els.tau1Input.value);
+  sendCommand('Tau2 ' + els.tau2Input.value);
+});
+els.btnKpv.addEventListener('click', () => sendCommand('Kpv ' + els.kpvInput.value));
+els.btnKdv.addEventListener('click', () => sendCommand('Kdv ' + els.kdvInput.value));
+
+els.btnTestMode.addEventListener('click', () => {
+  testModeActive = !testModeActive;
+  sendCommand(testModeActive ? 'TestOn' : 'TestOff');
+  els.btnTestMode.textContent = testModeActive ? 'TestOff' : 'TestOn';
+  els.btnTestMode.classList.toggle('active', testModeActive);
+  els.btnTestG.disabled = !testModeActive;
+  els.btnTestD.disabled = !testModeActive;
+});
+els.btnTestG.addEventListener('click', () => sendCommand('TestG ' + els.testGInput.value));
+els.btnTestD.addEventListener('click', () => sendCommand('TestD ' + els.testDInput.value));
+
+els.btnTestBatMode.addEventListener('click', () => {
+  testBatModeActive = !testBatModeActive;
+  sendCommand(testBatModeActive ? 'TestBatOn' : 'TestBatOff');
+  els.btnTestBatMode.textContent = testBatModeActive ? 'TestBatOff' : 'TestBatOn';
+  els.btnTestBatMode.classList.toggle('active', testBatModeActive);
+  els.btnTestBat.disabled = !testBatModeActive;
+});
+els.btnTestBat.addEventListener('click', () => sendCommand('TestBat ' + els.testBatInput.value));
+
+els.btnRaw.addEventListener('click', () => {
+  if (els.rawInput.value.trim()) {
+    sendCommand(els.rawInput.value.trim());
+    els.rawInput.value = '';
+  }
+});
+els.rawInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') els.btnRaw.click();
+});
+
+// Sécurité : arrêt si l'onglet est masqué (téléphone verrouillé, changement d'appli...)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && connected) { sendCommand('S'); resetVconsSlider(); }
+});
+
+setConnectedUI(false);
+</script>
+
+</body>
+</html>

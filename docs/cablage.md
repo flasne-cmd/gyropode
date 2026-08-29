@@ -1,51 +1,51 @@
-# Câblage
+# Brochage
 
-## Matériel
+Reprend les broches déclarées en tête de `src/main.cpp`, telles que câblées et
+vérifiées sur le robot.
 
-| Élément | Référence conseillée |
+## Moteurs (pont en H, PWM sur les deux entrées de chaque moteur)
+
+| Fonction | GPIO |
 | --- | --- |
-| Carte | ESP32 DevKit v1 (30 broches) |
-| Centrale inertielle | MPU6050 (GY-521) |
-| Driver moteurs | TB6612FNG (ou L298N) |
-| Moteurs | 2 motoréducteurs 6–12 V avec roues |
-| Batterie | 2S/3S LiPo ou 6 × AA, selon les moteurs |
-| Régulateur | 5 V vers l'ESP32 si la batterie dépasse 5 V |
+| Gauche, sens + (MOTOR-A) | 32 |
+| Gauche, sens − | 33 |
+| Droit, sens + (MOTOR-B) | 25 |
+| Droit, sens − | 26 |
 
-## MPU6050 → ESP32
+PWM à 20 kHz, résolution 10 bits : le repos correspond à un rapport cyclique de
+512 sur les deux entrées, la commande est appliquée en `512 ± Ecc`, saturée à
+±470.
 
-| MPU6050 | ESP32 |
+Attention : le câblage réel est **inversé** par rapport aux premières étapes du
+projet (gauche = 25/26, droit = 32/33). Vérifier avec `TestOn` / `TestG 300` /
+`TestD 300` avant tout essai au sol.
+
+## Codeurs (diagnostic uniquement)
+
+| Signal | GPIO |
 | --- | --- |
-| VCC | 3V3 |
-| GND | GND |
-| SDA | GPIO 21 |
-| SCL | GPIO 22 |
+| Codeur gauche | 16 |
+| Codeur droit A | 18 |
+| Codeur droit B | 19 |
 
-Le capteur doit être fixé **rigidement** au châssis, à plat, l'axe X aligné avec
-l'axe des roues. Un capteur qui vibre ou qui bouge rend l'asservissement
-impossible.
+Ces mesures sont affichées (`vG`, `vD`) mais n'entrent dans aucun
+asservissement.
 
-## TB6612FNG → ESP32
+## MPU6050
 
-| TB6612 | ESP32 |
+Bus I2C par défaut de l'ESP32 : SDA = GPIO 21, SCL = GPIO 22, alimentation 3V3.
+Le capteur doit être fixé rigidement au châssis.
+
+## LED d'état et batterie
+
+| Fonction | GPIO |
 | --- | --- |
-| PWMA | GPIO 27 |
-| AIN1 | GPIO 25 |
-| AIN2 | GPIO 26 |
-| PWMB | GPIO 14 |
-| BIN1 | GPIO 32 |
-| BIN2 | GPIO 33 |
-| STBY | GPIO 12 |
-| VCC | 3V3 |
-| VM | + batterie |
-| GND | GND commun avec l'ESP32 et la batterie |
+| LED rouge | 2 |
+| LED bleue | 0 |
+| LED verte | 4 |
+| Mesure batterie (ADC) | 34 |
 
-Avec un L298N, PWMA/PWMB correspondent à ENA/ENB et il n'y a pas de broche STBY :
-mettre `PIN_MOTOR_STANDBY` à `-1` dans `include/config.h`.
-
-## Points de vigilance
-
-- La masse de la batterie, celle du driver et celle de l'ESP32 doivent être reliées.
-- Ne pas alimenter les moteurs depuis le port USB de l'ESP32.
-- Placer la batterie le plus haut possible sur le châssis : un centre de gravité
-  élevé rend le gyropode plus facile à stabiliser.
-- Prévoir un interrupteur qui coupe l'alimentation moteurs, indépendant de l'ESP32.
+Seuils sur la mesure ADC : 3500 (~6,2 V) → LED bleue, avertissement ; 3000
+(~6,0 V) → LED rouge et coupure des moteurs. Les commandes `TestBatOn`,
+`TestBat <val>` et `TestBatOff` permettent de simuler la tension pour vérifier
+les LED et la coupure sans décharger la batterie.

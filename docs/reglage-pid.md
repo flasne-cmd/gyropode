@@ -1,37 +1,42 @@
-# Réglage du PID
+# Réglage
 
-Le gyropode tient debout grâce à un régulateur PID qui transforme l'angle
-d'inclinaison en vitesse des roues. Les gains dépendent du poids, de la hauteur
-et des moteurs : ceux de `include/config.h` ne sont qu'un point de départ.
+Tous les paramètres ci-dessous se modifient en direct, sans reflasher, depuis
+`web/pilotage.html` ou le port série (une commande par ligne). Les valeurs
+retenues doivent ensuite être reportées dans `src/main.cpp`, sinon elles sont
+perdues à l'extinction.
 
-Les trois gains se règlent en direct depuis l'interface web
-(<http://192.168.4.1>), gyropode tenu à la main au-dessus du sol.
+## Paramètres
 
-## Méthode
+| Commande | Rôle | Valeur par défaut |
+| --- | --- | --- |
+| `Kp` / `Kd` | PD d'équilibrage (angle → PWM) | −13 / −30 |
+| `thetaeq` | angle d'équilibre, verticale réelle du châssis | −9.962 |
+| `Kpv` / `Kdv` | boucle de vitesse cascadée | −0.015 / 0.3 |
+| `KVcons` | biais direct consigne → inclinaison cible | 0.03 |
+| `ConsAvance` / `ConsVirage` | amplitudes des commandes F/B et L/R | 80 / 60 |
+| `Vcons` / `Dec` | consigne d'avance et différentiel de virage en continu | 0 |
+| `VconsRampeMax` | pente maximale de la rampe sur `Vcons`, par cycle de 5 ms | 2 |
+| `Tau1` / `Tau2` | constantes de temps des filtres complémentaires | 100 / 35 |
+| `SeuilChute` | coupure de sécurité, en degrés | 50 |
+| `SeuilRepos` | zone morte anti-vibration avant compensation de frottement | 15 |
 
-1. **Mettre Ki et Kd à 0.** Augmenter **Kp** jusqu'à ce que le gyropode réagisse
-   franchement quand on le penche. Trop bas : il tombe mollement. Trop haut : il
-   oscille rapidement et vibre.
-2. Augmenter **Kd** pour amortir ces oscillations. Trop haut : le gyropode
-   devient nerveux et bruyant, les moteurs saccadent.
-3. Augmenter **Ki** pour supprimer la dérive lente (le gyropode s'éloigne
-   doucement dans une direction). Trop haut : oscillation lente de grande
-   amplitude.
-4. Reporter les valeurs trouvées dans `include/config.h` (`PID_KP`, `PID_KI`,
-   `PID_KD`) puis reflasher, sinon elles sont perdues à l'extinction.
+`Kp` et `Kd` doivent changer de signe ensemble, sinon le terme dérivé s'oppose
+au terme proportionnel au lieu de l'amortir.
 
-## Réglage de l'aplomb
+`Ecfd` / `Ecfg` (compensation de frottement sec, 190/190) ne sont pas exposés en
+commande : les modifier demande un reflash.
 
-Si le gyropode part systématiquement du même côté alors qu'il paraît vertical,
-c'est que le capteur n'est pas parfaitement à plat. Ajuster
-`BALANCE_OFFSET_DEG` par pas de 0,5° : positif s'il fuit vers l'avant.
+## Calibrage de `thetaeq`
 
-## Symptômes courants
+Placer le robot à sa position d'équilibre réelle et lire `thetaF` :
+`thetaeq += thetaF`. Le nouveau `thetaeq` ramène `thetaF` à 0 à cette position.
 
-| Symptôme | Cause probable |
-| --- | --- |
-| Vibration rapide sur place | Kp ou Kd trop élevé |
-| Chute molle sans réaction | Kp trop faible, ou moteurs sous-alimentés |
-| Dérive lente constante | `BALANCE_OFFSET_DEG` mal réglé, ou Ki trop faible |
-| Balancement lent d'avant en arrière | Ki trop élevé |
-| Réaction dans le mauvais sens | Moteurs câblés à l'envers, ou capteur retourné |
+## Précautions
+
+- Faire les réglages robot tenu à la main ou sur support, pas au sol.
+- Vérifier le sens des moteurs (`TestOn`, `TestG`, `TestD`, `TestOff`) après
+  toute intervention sur le câblage.
+- `Kpv` / `Kdv` sont en cours de validation : les faire varier à très petite
+  magnitude et jamais au sol tant que le comportement n'est pas confirmé.
+- Vibrations à l'arrêt : augmenter `SeuilRepos`. Chutes en accélérant :
+  réduire `VconsRampeMax`.
