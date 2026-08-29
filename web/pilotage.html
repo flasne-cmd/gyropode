@@ -407,6 +407,15 @@
         </div>
       </div>
       <p class="hint">Coupe la compensation de frottement sec (qui saute entre +/-190) tant que la commande gauche/droite reste sous ce seuil -- évite les vibrations dues au bruit capteur quand le robot est déjà équilibré. Augmenter si les vibrations persistent à l'arrêt ; réduire si le robot devient mou près de l'équilibre.</p>
+      <div class="field">
+        <label>Frottement sec Ecfg / Ecfd (gauche / droite)</label>
+        <div class="row">
+          <input type="number" id="ecfgInput" value="190" step="10">
+          <input type="number" id="ecfdInput" value="190" step="10">
+          <button id="btnEcf">OK</button>
+        </div>
+      </div>
+      <p class="hint">Amplitude du saut de compensation appliqué dès que la commande dépasse le seuil de repos. Trop haut : le robot part en oscillation d'amplitude constante autour de l'équilibre. Trop bas : il reste mou et ne décolle pas du frottement des moteurs. Valeur affichée en direct dans la ligne de diagnostic (Ecf=...).</p>
     </div>
 
     <div class="panel">
@@ -484,7 +493,7 @@ let testBatModeActive = false;
 const controls = [
   els.btnStop, els.vconsSlider, els.btnConsAvance, els.btnConsVirage,
   els.btnKp, els.btnKd, els.btnThetaeq, els.btnTau, els.btnKpv, els.btnKdv,
-  els.btnSeuilChute, els.btnSeuilRepos, els.btnVconsRampeMax,
+  els.btnSeuilChute, els.btnSeuilRepos, els.btnEcf, els.btnVconsRampeMax,
   els.btnTestMode, els.btnTestBatMode, els.rawInput, els.btnRaw
 ];
 const dpadButtons = document.querySelectorAll('.dpad-lr button');
@@ -702,6 +711,10 @@ els.btnKd.addEventListener('click', () => sendCommand('Kd ' + els.kdInput.value)
 els.btnThetaeq.addEventListener('click', () => sendCommand('thetaeq ' + els.thetaeqInput.value));
 els.btnSeuilChute.addEventListener('click', () => sendCommand('SeuilChute ' + els.seuilChuteInput.value));
 els.btnSeuilRepos.addEventListener('click', () => sendCommand('SeuilRepos ' + els.seuilReposInput.value));
+els.btnEcf.addEventListener('click', () => {
+  sendCommand('Ecfg ' + els.ecfgInput.value);
+  sendCommand('Ecfd ' + els.ecfdInput.value);
+});
 els.btnVconsRampeMax.addEventListener('click', () => sendCommand('VconsRampeMax ' + els.vconsRampeMaxInput.value));
 els.btnTau.addEventListener('click', () => {
   sendCommand('Tau1 ' + els.tau1Input.value);
