@@ -1,4 +1,5 @@
 .pio/
-.vscode/
+.vscode/*
+!.vscode/gyropode.code-workspace
 *.bin
 *.elf
