@@ -163,15 +163,15 @@ volatile long compteurD = 0;
 
 void IRAM_ATTR isrCodeurG()
 {
-    compteurG++;
+    compteurG = compteurG + 1;
 }
 
 void IRAM_ATTR isrCodeurD()
 {
     if (digitalRead(PinCodeurD_B) == HIGH)
-        compteurD++;
+        compteurD = compteurD + 1;
     else
-        compteurD--;
+        compteurD = compteurD - 1;
 }
 
 long dernierCompteurG = 0;
