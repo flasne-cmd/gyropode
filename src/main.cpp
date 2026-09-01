@@ -138,10 +138,9 @@
  *   SeuilChute <val>       -> seuil de coupure sécurité en cas de chute, +/-deg (défaut 50)
  *   SeuilRepos <val>       -> zone morte anti-vibration sur Ecg/Ecd avant compensation de
  *                             frottement sec (défaut 15) -- augmenter si vibrations à l'arrêt
- *
- *   NOTE : Ecfd/Ecfg (compensation de frottement sec) ne sont pour l'instant
- *   PAS exposés en commande série/WebSocket -- seulement réglables en dur
- *   ci-dessous (donc reflash nécessaire pour les retoucher).
+ *   Ecfg <val>  Ecfd <val> -> compensation de frottement sec gauche/droite (défaut 190/190)
+ *                             -- réduire si le robot part en oscillation d'amplitude constante
+ *                             près de l'équilibre, augmenter s'il reste mou/collé
  */
 
 // ---------- Broches moteurs (cf. note brochage ci-dessus) ----------
@@ -419,6 +418,14 @@ void traiterCommande(String ligne)
     else if (ligne.startsWith("SeuilRepos"))
     {
         seuilRepos = ligne.substring(10).toFloat();
+    }
+    else if (ligne.startsWith("Ecfg"))
+    {
+        Ecfg = ligne.substring(4).toFloat();
+    }
+    else if (ligne.startsWith("Ecfd"))
+    {
+        Ecfd = ligne.substring(4).toFloat();
     }
     else if (ligne.startsWith("Tau1"))
     {
@@ -915,12 +922,15 @@ void loop()
         // permet de voir la rampe suivre (ou pas) la consigne brute pendant le
         // réglage de VconsRampeMax (voir sa déclaration).
         // Buffer élargi (300 -> 350) pour thetaC/efv, (350 -> 380) pour
-        // chute=%d, (380 -> 400) pour VconsRampe.
-        char diag[400];
+        // chute=%d, (380 -> 400) pour VconsRampe, (400 -> 440) pour Ecf.
+        // Ecf est placé APRES chute=%d : l'expression régulière de
+        // web/pilotage.html s'arrête à ce champ, un ajout en fin de ligne ne
+        // casse donc pas les anciennes versions de l'interface.
+        char diag[440];
         snprintf(diag, sizeof(diag),
-                 "thetaF=%.3f ec=%.1f Eccg=%.1f Eccd=%.1f | thetaC=%.2f efv=%.1f | Vcons=%.0f VconsRampe=%.1f Dec=%.0f | vG=%.1f vD=%.1f | bat=%.0f led=%c coupure=%d chute=%d%s%s",
+                 "thetaF=%.3f ec=%.1f Eccg=%.1f Eccd=%.1f | thetaC=%.2f efv=%.1f | Vcons=%.0f VconsRampe=%.1f Dec=%.0f | vG=%.1f vD=%.1f | bat=%.0f led=%c coupure=%d chute=%d | Ecf=%.0f/%.0f%s%s",
                  thetaF, ec, Eccg, Eccd, thetaC, efv, Vcons, VconsRampe, Dec, vitesseG, vitesseD, mesurebat, etatLed,
-                 batterieFaible ? 1 : 0, chute ? 1 : 0, modeTestBat ? " (testBat)" : "", modeTest ? " (testMoteur)" : "");
+                 batterieFaible ? 1 : 0, chute ? 1 : 0, Ecfg, Ecfd, modeTestBat ? " (testBat)" : "", modeTest ? " (testMoteur)" : "");
 
         // Même diagnostic sur les deux canaux : USB (débogage local) et
         // WebSocket (téléphone connecté au point d'accès). Aucun client WS
