@@ -69,4 +69,9 @@ de réglage dans [docs/reglage-pid.md](docs/reglage-pid.md).
 | `web/pilotage.html` | interface de pilotage et de réglage, à ouvrir en local |
 | `platformio.ini` | plateforme, bibliothèques et partitions |
 | `.vscode/gyropode.code-workspace` | espace de travail VS Code |
-| `docs/` | câblage et réglage |
+| `docs/` | câblage, réglage, travail hors ligne |
+| `outils/nouveau-projet-esp32.ps1` | crée un nouveau projet ESP32 avec la même structure |
+
+Pour la copie locale, la compilation sans Internet et l'organisation commune à
+plusieurs robots, voir
+[docs/travail-hors-ligne.md](docs/travail-hors-ligne.md).
